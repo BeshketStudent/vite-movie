@@ -102,7 +102,7 @@
   }
 
   .movie-card {
-    @apply bg-dark-100 p-5 rounded-2xl shadow-inner shadow-light-100/10;
+    @apply bg-dark-100 p-5 rounded-2xl shadow-inner shadow-light-100/10 transition-transform duration-200 ease-in-out cursor-pointer;
 
     & img {
       @apply rounded-lg h-auto w-full;
@@ -138,6 +138,56 @@
 
     & .content .year {
       @apply text-gray-100 font-medium text-base;
+    }
+  }
+
+  .movie-card:hover {
+    @apply scale-105 shadow-2xl shadow-light-100/20;
+    z-index: 2;
+  }
+
+  .movie-details-backdrop {
+    @apply min-h-screen bg-primary flex items-start justify-center py-12 px-2;
+  }
+
+  .movie-details-content {
+    @apply bg-dark-100 rounded-2xl shadow-xl max-w-md w-full p-8 flex flex-col items-center relative z-10;
+  }
+
+  .movie-details-content img {
+    @apply w-56 h-auto rounded-lg mb-6 shadow-lg object-cover;
+  }
+
+  .movie-details-content h2 {
+    @apply text-white text-2xl font-bold mb-2 text-center;
+  }
+
+  .movie-details-content p {
+    @apply text-gray-100 text-base mb-1 text-center;
+  }
+
+  .movie-details-content strong {
+    @apply text-light-100;
+  }
+
+  .movie-details-content .close-btn {
+    @apply absolute top-4 left-4 bg-light-100/10 text-white rounded-full w-12 h-12 flex items-center justify-center hover:bg-light-100/20 transition;
+    cursor: pointer;
+  }
+
+  .movie-details-content .close-btn img {
+    margin: 0 auto;
+    display: block;
+    filter: brightness(0) invert(1);
+    position: static;
+  }
+
+  @media (max-width: 600px) {
+    .movie-details-content {
+      @apply max-w-full p-4;
+    }
+    .movie-details-content img {
+      @apply w-full max-w-xs;
     }
   }
 }

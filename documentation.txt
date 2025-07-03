@@ -1,0 +1,485 @@
+
+---
+
+# 📽️ Vite Movie Search App — Beginner Documentation
+
+---
+
+## 1. **Project Overview**
+
+This project is a movie search web app built with **React** (a popular JavaScript library for building user interfaces) and **Vite** (a fast build tool for modern web projects).  
+It lets users search for movies, see trending movies, and view movie details. It uses [The Movie Database (TMDB)](https://www.themoviedb.org/) API for movie data and [Appwrite](https://appwrite.io/) as a backend for tracking trending searches.
+
+---
+
+## 2. **Project Structure**
+
+```
+react-movie/
+│
+├── public/                # Static assets (images, icons)
+├── src/                   # Source code
+│   ├── assets/            # More images/icons
+│   ├── components/        # Reusable React components
+│   │   ├── MovieCard.jsx
+│   │   ├── Search.jsx
+│   │   └── Spinner.jsx
+│   ├── App.jsx            # Main app component
+│   ├── appwrite.js        # Appwrite backend logic
+│   ├── index.css          # Main CSS (with Tailwind)
+│   ├── main.jsx           # Entry point for React
+│   └── App.css            # (Optional) extra styles
+├── .env.local             # Environment variables (API keys, etc.)
+├── index.html             # HTML template
+├── package.json           # Project metadata and dependencies
+├── vite.config.js         # Vite configuration
+└── .gitignore             # Files/folders to ignore in git
+```
+
+---
+
+## 3. **Key Files Explained**
+
+### **A. index.html**
+
+This is the HTML template for your app.  
+It has a `<div id="root"></div>` where your React app will be rendered.
+
+```html
+<body>
+  <div id="root"></div>
+  <script type="module" src="/src/main.jsx"></script>
+</body>
+```
+
+---
+
+### **B. main.jsx**
+
+This is the entry point for your React app.  
+It tells React to render the `App` component inside the `#root` div.
+
+```jsx
+import { StrictMode } from 'react'
+import { createRoot } from 'react-dom/client'
+import './index.css'
+import App from './App.jsx'
+
+createRoot(document.getElementById('root')).render(
+    <App />
+)
+```
+
+---
+
+### **C. App.jsx**
+
+This is the **main component** of your app.  
+It handles state, fetching movies, and rendering the UI.
+
+#### **Imports**
+
+```jsx
+import { useEffect, useState } from 'react'
+import Search from './components/Search.jsx'
+import Spinner from './components/Spinner.jsx'
+import MovieCard from './components/MovieCard.jsx'
+import { getTrendingMovies, updateSearchCount } from './appwrite.js'
+```
+- `useState` and `useEffect` are React hooks for managing state and side effects.
+- `Search`, `Spinner`, `MovieCard` are custom components.
+- `getTrendingMovies`, `updateSearchCount` are functions for interacting with Appwrite.
+
+#### **API Setup**
+
+```jsx
+const API_BASE_URL = 'https://api.themoviedb.org/3';
+const API_KEY = import.meta.env.VITE_TMDB_API_KEY;
+const API_OPTIONS = {
+  method: 'GET',
+  headers: {
+    accept: 'application/json',
+    Authorization: `Bearer ${API_KEY}`
+  }
+}
+```
+- Sets up the TMDB API base URL and authorization headers using your API key.
+
+#### **State Variables**
+
+```jsx
+const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('')
+const [searchTerm, setSearchTerm] = useState('');
+const [movieList, setMovieList] = useState([]);
+const [errorMessage, setErrorMessage] = useState('');
+const [isLoading, setIsLoading] = useState(false);
+const [hasMore, setHasMore] = useState(true);
+const [totalPages, setTotalPages] = useState(null);
+const [trendingMovies, setTrendingMovies] = useState([]);
+const [page, setPage] = useState(1);
+```
+- These variables hold the current search, movie results, loading/error states, trending movies, and pagination info.
+
+#### **Debouncing Search Input**
+
+```jsx
+useEffect(() => {
+  const handler = setTimeout(() => {
+    setDebouncedSearchTerm(searchTerm);
+  }, 500);
+
+  return () => clearTimeout(handler);
+}, [searchTerm]);
+```
+- Waits 500ms after the user stops typing before searching (to avoid too many API calls).
+
+#### **Fetching Movies**
+
+```jsx
+const fetchMovies = async (query = '', pageNum = 1, append = false) => {
+  setIsLoading(true);
+  setErrorMessage('');
+
+  try {
+    const endpoint = query
+      ? `${API_BASE_URL}/search/movie?query=${encodeURIComponent(query)}&page=${pageNum}`
+      : `${API_BASE_URL}/discover/movie?sort_by=popularity.desc&page=${pageNum}`;
+
+    const response = await fetch(endpoint, API_OPTIONS);
+
+    if(!response.ok) throw new Error('Failed to fetch movies');
+    const data = await response.json();
+
+    if(data.Response === 'False') {
+      setErrorMessage(data.Error || 'Failed to fetch movies');
+      if (!append) setMovieList([]);
+      return;
+    }
+
+    setMovieList(prev =>
+      append ? [...prev, ...(data.results || [])] : (data.results || [])
+    );
+
+    if(query && data.results.length > 0 && pageNum === 1) {
+      await updateSearchCount(query, data.results[0]);
+    }
+
+    if (data.total_pages) setTotalPages(data.total_pages);
+    if (pageNum >= data.total_pages) setHasMore(false);
+  } catch (error) {
+    console.error(`Error fetching movies: ${error}`);
+    setErrorMessage('Error fetching movies. Please try again later.');
+  } finally {
+    setIsLoading(false);
+  }
+}
+```
+- Fetches movies from TMDB (either trending or by search).
+- Handles errors and updates state.
+- Calls `updateSearchCount` to track popular searches in Appwrite.
+
+#### **Fetching Trending Movies**
+
+```jsx
+const loadTrendingMovies = async () => {
+  try {
+    const movies = await getTrendingMovies();
+    setTrendingMovies(movies);
+  } catch (error) {
+    console.error(`Error fetching trending movies: ${error}`);
+  }
+}
+```
+- Loads trending movies from Appwrite.
+
+#### **Effect Hooks for Data Fetching and Pagination**
+
+```jsx
+useEffect(() => { fetchMovies(debouncedSearchTerm); }, [debouncedSearchTerm]);
+useEffect(() => { loadTrendingMovies(); }, []);
+useEffect(() => {
+  const handleScroll = () => {
+    if (
+      window.innerHeight + window.scrollY >= document.body.offsetHeight - 300 &&
+      !isLoading && hasMore
+    ) {
+      setPage(prev => prev + 1);
+    }
+  };
+  window.addEventListener('scroll', handleScroll);
+  return () => window.removeEventListener('scroll', handleScroll);
+}, [isLoading, hasMore]);
+useEffect(() => {
+  if (page === 1) return;
+  fetchMovies(debouncedSearchTerm, page, true);
+}, [page]);
+useEffect(() => {
+  setPage(1);
+  fetchMovies(debouncedSearchTerm, 1, false);
+}, [debouncedSearchTerm]);
+```
+- These hooks handle:
+  - Fetching movies when the search term changes.
+  - Loading trending movies on first load.
+  - Infinite scrolling (loads more movies when you scroll down).
+  - Resetting the page when the search term changes.
+
+#### **Rendering the UI**
+
+```jsx
+return (
+  <main>
+    <div className="pattern"/>
+    <div className="wrapper">
+      <header>
+        <img src="./hero.png" alt="Hero Banner" />
+        <h1>Find <span className="text-gradient">Movies</span> You'll Enjoy Without the Hassle</h1>
+        <Search searchTerm={searchTerm} setSearchTerm={setSearchTerm} />
+      </header>
+
+      {trendingMovies.length > 0 && (
+        <section className="trending">
+          <h2>Trending Movies</h2>
+          <ul>
+            {trendingMovies.map((movie, index) => (
+              <li key={movie.$id}>
+                <p>{index + 1}</p>
+                <img src={movie.poster_url} alt={movie.title} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      <section className="all-movies">
+        <h2>All Movies</h2>
+        {isLoading ? (
+          <Spinner />
+        ) : errorMessage ? (
+          <p className="text-red-500">{errorMessage}</p>
+        ) : (
+          <ul>
+            {movieList.map((movie) => (
+              <MovieCard key={movie.id} movie={movie} />
+            ))}
+          </ul>
+        )}
+        {isLoading && <div className="loading">Loading more movies...</div>}
+        {!hasMore && <div className="end-message">No more movies to show.</div>}
+      </section>
+    </div>
+  </main>
+)
+```
+- Renders the header, search bar, trending movies, and the list of all movies.
+- Shows a spinner while loading, and error messages if something goes wrong.
+
+---
+
+### **D. Search.jsx**
+
+A simple search bar component.
+
+```jsx
+const Search = ({ searchTerm, setSearchTerm }) => (
+  <div className="search">
+    <div>
+      <img src="search.svg" alt="search" />
+      <input
+        type="text"
+        placeholder="Search through thousands of movies"
+        value={searchTerm}
+        onChange={(e) => setSearchTerm(e.target.value)}
+      />
+    </div>
+  </div>
+)
+```
+- Controlled input: the value is managed by React state.
+
+---
+
+### **E. Spinner.jsx**
+
+A loading spinner shown while data is being fetched.
+
+```jsx
+const Spinner = () => (
+  <div role="status">
+    <svg ...>...</svg>
+    <span className="sr-only">Loading...</span>
+  </div>
+)
+```
+
+---
+
+### **F. MovieCard.jsx**
+
+Displays a single movie’s info.
+
+```jsx
+const MovieCard = ({ movie: { title, vote_average, poster_path, release_date, original_language } }) => (
+  <div className="movie-card">
+    <img
+      src={poster_path ? `https://image.tmdb.org/t/p/w500/${poster_path}` : '/no-movie.png'}
+      alt={title}
+    />
+    <div className="mt-4">
+      <h3>{title}</h3>
+      <div className="content">
+        <div className="rating">
+          <img src="star.svg" alt="Star Icon" />
+          <p>{vote_average ? vote_average.toFixed(1) : 'N/A'}</p>
+        </div>
+        <span>•</span>
+        <p className="lang">{original_language}</p>
+        <span>•</span>
+        <p className="year">{release_date ? release_date.split('-')[0] : 'N/A'}</p>
+      </div>
+    </div>
+  </div>
+)
+```
+- Shows poster, title, rating, language, and year.
+
+---
+
+### **G. appwrite.js**
+
+Handles communication with Appwrite backend.
+
+```js
+import { Client, Databases, ID, Query } from 'appwrite'
+
+const PROJECT_ID = import.meta.env.VITE_APPWRITE_PROJECT_ID;
+const DATABASE_ID = import.meta.env.VITE_APPWRITE_DATABASE_ID;
+const COLLECTION_ID = import.meta.env.VITE_APPWRITE_COLLECTION_ID;
+
+const client = new Client()
+  .setEndpoint('https://fra.cloud.appwrite.io/v1')
+  .setProject(PROJECT_ID)
+
+const database = new Databases(client);
+
+// Update search count for a term
+export const updateSearchCount = async (searchTerm, movie) => {
+  try {
+    const result = await database.listDocuments(DATABASE_ID, COLLECTION_ID, [
+      Query.equal('searchTerm', searchTerm),
+    ])
+    if(result.documents.length > 0) {
+      const doc = result.documents[0];
+      await database.updateDocument(DATABASE_ID, COLLECTION_ID, doc.$id, {
+        count: doc.count + 1,
+      })
+    } else {
+      await database.createDocument(DATABASE_ID, COLLECTION_ID, ID.unique(), {
+        searchTerm,
+        count: 1,
+        movie_id: movie.id,
+        poster_url: `https://image.tmdb.org/t/p/w500${movie.poster_path}`,
+      })
+    }
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Get trending movies (top 5 by search count)
+export const getTrendingMovies = async () => {
+  try {
+    const result = await database.listDocuments(DATABASE_ID, COLLECTION_ID, [
+      Query.limit(5),
+      Query.orderDesc("count")
+    ])
+    return result.documents;
+  } catch (error) {
+    console.error(error);
+  }
+}
+```
+- Handles storing and retrieving trending search data.
+
+---
+
+### **H. .env.local**
+
+Stores sensitive keys and IDs (not committed to git):
+
+```
+VITE_TMDB_API_KEY=your_tmdb_api_key
+VITE_APPWRITE_PROJECT_ID=your_appwrite_project_id
+VITE_APPWRITE_ENDPOINT=https://fra.cloud.appwrite.io/v1
+VITE_APPWRITE_DATABASE_ID=your_database_id
+VITE_APPWRITE_COLLECTION_ID=your_collection_id
+```
+- These are loaded into your app at build time.
+
+---
+
+### **I. vite.config.js**
+
+Configures Vite and plugins (like React and Tailwind):
+
+```js
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
+
+export default defineConfig({
+  plugins: [react(), tailwindcss()],
+})
+```
+
+---
+
+## 4. **How It All Works Together**
+
+- The user types a search term.
+- The app waits 500ms (debounce), then fetches movies from TMDB.
+- Results are displayed as cards.
+- When the user scrolls, more results are loaded (infinite scroll).
+- Trending searches are tracked and displayed using Appwrite.
+- All UI is styled with Tailwind CSS.
+
+---
+
+## 5. **How to Run Locally**
+
+1. **Install dependencies:**
+   ```sh
+   npm install
+   ```
+2. **Set up .env.local** with your API keys.
+3. **Start the dev server:**
+   ```sh
+   npm run dev
+   ```
+4. Open [http://localhost:5173](http://localhost:5173) in your browser.
+
+---
+
+## 6. **Key Concepts for Beginners**
+
+- **React**: Lets you build UI with components and manage state.
+- **Vite**: Fast dev server and build tool.
+- **Hooks**: `useState` for state, `useEffect` for side effects (like fetching data).
+- **Props**: Pass data to components.
+- **Environment Variables**: Keep secrets out of your code.
+- **Appwrite**: Backend-as-a-service for storing data.
+- **Tailwind CSS**: Utility-first CSS framework for styling.
+
+---
+
+## 7. **Where to Learn More**
+
+- [React Docs](https://react.dev/)
+- [Vite Docs](https://vitejs.dev/)
+- [TMDB API Docs](https://developer.themoviedb.org/docs)
+- [Appwrite Docs](https://appwrite.io/docs)
+- [Tailwind CSS Docs](https://tailwindcss.com/docs/utility-first)
+
+---
+
+**Happy coding! If you get stuck, read the comments in the code and check the docs above.**

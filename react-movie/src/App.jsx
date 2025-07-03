@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom';
 import Search from './components/Search.jsx'
 import Spinner from './components/Spinner.jsx'
 import MovieCard from './components/MovieCard.jsx'
+import MovieModal from './components/MoviePage.jsx';
 import { getTrendingMovies, updateSearchCount } from './appwrite.js'
 
 const API_BASE_URL = 'https://api.themoviedb.org/3';
@@ -28,6 +30,9 @@ const App = () => {
 
   const [trendingMovies, setTrendingMovies] = useState([]);
   const [page, setPage] = useState(1);
+  const [selectedMovie, setSelectedMovie] = useState(null);
+
+  const navigate = useNavigate();
 
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -162,7 +167,9 @@ const App = () => {
           ) : (
             <ul>
               {movieList.map((movie) => (
-                <MovieCard key={movie.id} movie={movie} />
+                <div key={movie.id} onClick={() => navigate(`/movie/${movie.id}`)}>
+                  <MovieCard movie={movie} />
+                </div>
               ))}
             </ul>
           )}
@@ -170,6 +177,8 @@ const App = () => {
           {isLoading && <div className="loading">Loading more movies...</div>}
           {!hasMore && <div className="end-message">No more movies to show.</div>}
         </section>
+
+        
       </div>
     </main>
   )
