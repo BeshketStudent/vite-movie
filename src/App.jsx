@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom';
 import Search from './components/Search.jsx'
 import Spinner from './components/Spinner.jsx'
 import MovieCard from './components/MovieCard.jsx'
-import MovieModal from './components/MoviePage.jsx';
+import MoviePage from './components/MoviePage.jsx';
 import { getTrendingMovies, updateSearchCount } from './appwrite.js'
 
 const API_BASE_URL = 'https://api.themoviedb.org/3';
@@ -33,6 +33,7 @@ const App = () => {
   const [selectedMovie, setSelectedMovie] = useState(null);
 
   const navigate = useNavigate();
+  const scrollPosition = useRef(0);
 
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -96,21 +97,24 @@ const App = () => {
   }
 
   useEffect(() => {
-    fetchMovies(debouncedSearchTerm);
-  }, [debouncedSearchTerm]);
-
-  useEffect(() => {
     loadTrendingMovies();
   }, []);
 
   useEffect(() => {
+    let ticking = false;
     const handleScroll = () => {
-      if (
-        window.innerHeight + window.scrollY >= document.body.offsetHeight - 300 &&
-        !isLoading &&
-        hasMore
-      ) {
-        setPage(prev => prev + 1);
+      if (!ticking) {
+        window.requestAnimationFrame(() => {
+          if (
+            window.innerHeight + window.scrollY >= document.body.offsetHeight - 300 &&
+            !isLoading &&
+            hasMore
+          ) {
+            setPage(prev => prev + 1);
+          }
+          ticking = false;
+        });
+        ticking = true;
       }
     };
 
@@ -125,10 +129,34 @@ const App = () => {
   }, [page]);
 
   useEffect(() => {
-    setPage(1);
-    fetchMovies(debouncedSearchTerm, 1, false);
+    if (debouncedSearchTerm) {
+      scrollPosition.current = window.scrollY;
+      setPage(1);
+      setHasMore(true);
+      fetchMovies(debouncedSearchTerm, 1, false).then(() => {
+        window.scrollTo(0, scrollPosition.current);
+      });
+    }
     // eslint-disable-next-line
   }, [debouncedSearchTerm]);
+
+  // Add a list of banned keywords (lowercase)
+  const bannedKeywords = [
+    'porn', 'porno', 'adult', 'av', 'jav', 'erotic', 'xxx', 'sex'
+  ];
+
+  // Helper function to check if a movie should be excluded
+  function isBannedMovie(movie) {
+    const text = `${movie.title} ${movie.overview || ''}`.toLowerCase();
+
+    // Block any movie (any language) with banned keywords in title/overview
+    if (bannedKeywords.some(word => text.includes(word))) {
+      return true;
+    }
+
+    // Otherwise, allow all movies, including Japanese ones without banned keywords
+    return false;
+  }
 
   return (
     <main>
@@ -166,11 +194,13 @@ const App = () => {
             <p className="text-red-500">{errorMessage}</p>
           ) : (
             <ul>
-              {movieList.map((movie) => (
-                <div key={movie.id} onClick={() => navigate(`/movie/${movie.id}`)}>
-                  <MovieCard movie={movie} />
-                </div>
-              ))}
+              {movieList
+                .filter(movie => !isBannedMovie(movie))
+                .map((movie) => (
+                  <li key={movie.id} onClick={() => navigate(`/movie/${movie.id}`)}>
+                    <MovieCard movie={movie} />
+                  </li>
+                ))}
             </ul>
           )}
 

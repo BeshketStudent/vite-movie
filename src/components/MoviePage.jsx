@@ -16,6 +16,7 @@ const MoviePage = () => {
   const navigate = useNavigate();
   const [movie, setMovie] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [trailerKey, setTrailerKey] = useState(null);
 
   useEffect(() => {
     const fetchMovie = async () => {
@@ -24,8 +25,17 @@ const MoviePage = () => {
         const res = await fetch(`${API_BASE_URL}/movie/${id}`, API_OPTIONS);
         const data = await res.json();
         setMovie(data);
+
+        // Fetch videos (trailers)
+        const videoRes = await fetch(`${API_BASE_URL}/movie/${id}/videos`, API_OPTIONS);
+        const videoData = await videoRes.json();
+        const trailer = (videoData.results || []).find(
+          v => v.type === 'Trailer' && v.site === 'YouTube'
+        );
+        setTrailerKey(trailer ? trailer.key : null);
       } catch (err) {
         setMovie(null);
+        setTrailerKey(null);
       } finally {
         setLoading(false);
       }
@@ -56,6 +66,20 @@ const MoviePage = () => {
         )}
         {movie.runtime && (
           <p><strong>Runtime:</strong> {movie.runtime} min</p>
+        )}
+        {trailerKey && (
+          <div className="w-full my-4">
+            <iframe
+              width="100%"
+              height="315"
+              src={`https://www.youtube.com/embed/${trailerKey}`}
+              title="Trailer"
+              frameBorder="0"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+              className="rounded-xl shadow-lg"
+            ></iframe>
+          </div>
         )}
       </div>
     </div>
